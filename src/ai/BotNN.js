@@ -1,4 +1,5 @@
 var PlayerTracker = require('../PlayerTracker');
+var math = require('mathjs');
 
 
 
@@ -25,9 +26,11 @@ function BotNN() {
     this.ejectMass = 0; // Amount of times to eject mass
     this.oldPos = {x: 0, y:0};
 
-    this.genome = []
-    this.nbInputs = 9
-    this.nbHiddens = 5
+    this.genome = [] // Genotype
+    this.weights = [] // Phenotype
+
+    this.nbInputs = 18
+    this.nbHiddens = 9
     this.nbOuputs = 4
 }
 
@@ -155,18 +158,104 @@ BotNN.prototype.update = function() { // Overrides the update function from play
         }
     }
 
-    // First dirty version of nn computing
-    for (var i = 0; i < )
+    // Neural network computing
+
+    // Inputs neurons
+    var inputsMatrix = math.matrix(this.getInputs(cell));
+
+    // Input-Hidden weights
+    var weightsMatrix = math.matrix(this.weights.slice(0, (this.nbInputs + 1)*this.nbHiddens));
+
+    var hiddenMatrix = math.multiply(inputsMatrix, weightsMatrix);
+
+    // Apply sigmoid activation function
+    var lambda = 5.0;
+    hiddenMatrix = hiddenMatrix.map(function (value, index, matrix) {
+        return (1.0 / (math.exp(-value * lambda) + 1));
+    });
+
+    weightsMatrix = math.matrix(this.weights.slice((this.nbInputs + 1)*this.nbHiddens, this.weights.length);
+
+    var outputs = math.multiply(hiddenMatrix, weightsMatrix);
+
+    // Apply sigmoid activation function
+    outputs = outputs.map(function (value, index, matrix) {
+        return (1.0 / (math.exp(-value * lambda) + 1));
+    });
 
     // Action
-    this.decide(cell);
+    this.decide(cell, outputs);
 
     this.nodeDestroyQueue = []; // Empty
 
 };
 
-// Custom
+BotNN.prototype.getInputs = function(cell) {
+    // Nearest prey
+    var nearestCellInfo = this.getInfoNearest(cell, this.prey);
 
+    // Nearest predator
+    nearestCellInfo = nearestCellInfo.concat(this.getInfoNearest(cell, this.predators))
+
+    // Nearest threat
+    nearestCellInfo = nearestCellInfo.concat(this.getInfoNearest(cell, this.threats))
+
+    // Nearest food
+    nearestCellInfo = nearestCellInfo.concat(this.getInfoNearest(cell, this.food))
+
+    // Nearest virus
+    nearestCellInfo = nearestCellInfo.concat(this.getInfoNearest(cell, this.virus))
+
+    var inputsNN = nearestCellInfo;
+
+    // Mass
+    inputsNN.push(this.getTotalMass());
+
+    // Lowest cell mass
+    inputsNN.push(cell.mass);
+
+    // Number of cells
+    inputsNN.push(this.cells.length);
+
+    return inputsNN;
+}
+
+// Returns [cosinus, sinus, distance] to the nearest cell in the given list
+BotNN.prototype.getInfoNearest = function(cell, list) {
+    nearestCell = this.findNearest(cell, list);
+    var cellInfo = [];
+
+    // Find angle of vector between current cell and nearest cell
+    var deltaY = nearestCell.y - cell.position.y;
+    var deltaX = nearestCell.x - cell.position.x;
+    var angle = Math.atan2(deltaX, deltaY);
+
+    // Now reverse the angle
+    if (angle > Math.PI) {
+        angle -= Math.PI;
+    } else {
+        angle += Math.PI;
+    }
+
+    cellInfo.push(Math.cos(angle));
+    cellInfo.push(Math.sin(angle));
+
+    var distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+    cellInfo.push(distance);
+
+    return cellInfo;
+}
+
+BotNN.prototype.getTotalMass = function() {
+    var mass = 0;
+    for (var i = 0; i < this.cells.length; i++) {
+        mass += this.cells[i].mass;
+    }
+
+    return mass
+}
+
+// Custom
 BotNN.prototype.clearLists = function() {
     this.predators = [];
     this.threats = [];
@@ -208,167 +297,21 @@ BotNN.prototype.getState = function(cell) {
     return 0;
 };
 
-BotNN.prototype.decide = function(cell) {
-    // The bot decides what to do based on gamestate
-    switch (this.gameState) {
-        case 0: // Wander
-            //console.log("[Bot] "+cell.getName()+": Wandering");
-            if ((this.centerPos.x == this.mouse.x) && (this.centerPos.y == this.mouse.y)) {
-                // Get a new position
-                var index = Math.floor(Math.random() * this.gameServer.nodes.length);
-                var randomNode = this.gameServer.nodes[index];
-                var pos = {x: 0, y: 0};
+BotNN.prototype.decide = function(cell, outputs) {
+    // Computation of of mouse.x and mouse.y
+    // The idea is that outputs[0] (resp. outputs[1]) represents x (resp. y) as a ratio of
+    // the width (resp. height) in the viewBox.
+    this.mouse.x = this.viewBox.leftX + outputs[0] * this.viewBox.width;
+    this.mouse.y = this.viewBox.bottomY + outputs[1] * this.viewBox.height;
 
-                if ((randomNode.getType() == 3) || (randomNode.getType() == 1)) {
-                    pos.x = randomNode.position.x;
-                    pos.y = randomNode.position.y;
-                } else {
-                    // Not a food/ejected cell
-                    pos = this.gameServer.getRandomPosition();
-                }
-
-                // Set bot's mouse coords to this location
-                this.mouse = {x: pos.x, y: pos.y};
-            }
-            break;
-        case 1: // Looking for food
-            //console.log("[Bot] "+cell.getName()+": Getting Food");
-            if ((!this.target) || (this.visibleNodes.indexOf(this.target) == -1)) {
-                // Food is eaten/out of sight... so find a new food cell to target
-                this.target = this.findNearest(cell,this.food);
-
-                this.mouse = {x: this.target.position.x, y: this.target.position.y};
-            }
-            break;
-        case 2: // Run from (potential) predators
-            var avoid = this.combineVectors(this.predators);
-            //console.log("[Bot] "+cell.getName()+": Fleeing from "+avoid.getName());
-
-            // Find angle of vector between cell and predator
-            var deltaY = avoid.y - cell.position.y;
-            var deltaX = avoid.x - cell.position.x;
-            var angle = Math.atan2(deltaX,deltaY);
-
-            // Now reverse the angle
-            if (angle > Math.PI) {
-                angle -= Math.PI;
-            } else {
-                angle += Math.PI;
-            }
-
-            // Direction to move
-            var x1 = cell.position.x + (500 * Math.sin(angle));
-            var y1 = cell.position.y + (500 * Math.cos(angle));
-
-            this.mouse = {x: x1, y: y1};
-
-            // Cheating
-            if (cell.mass < 250) {
-                cell.mass += 1;
-            } 
-
-            if (this.juke) {
-                // Juking
-                this.gameServer.splitCells(this);
-            }
-
-            break;
-        case 3: // Target prey
-            if ((!this.target) || (cell.mass < (this.target.mass * 1.25)) || (this.visibleNodes.indexOf(this.target) == -1)) {
-                this.target = this.getRandom(this.prey);
-            }
-            //console.log("[Bot] "+cell.getName()+": Targeting "+this.target.getName());
-
-
-            this.mouse = {x: this.target.position.x, y: this.target.position.y};
-
-            var massReq = 1.25 * (this.target.mass * 2 ); // Mass required to splitkill the target
-
-            if ((cell.mass > massReq) && (this.cells.length == 1)) { // Will not split into more than 2 cells
-                var splitDist = (4 * (cell.getSpeed() * 5)) + (cell.getSize() * 1.75); // Distance needed to splitkill
-                var distToTarget = this.getAccDist(cell,this.target); // Distance between the target and this cell
-
-                if (splitDist >= distToTarget) {
-                    if ((this.threats.length > 0) && (this.getBiggest(this.threats).mass > (1.25 * (cell.mass/2)))) {
-                        // Dont splitkill when they are cells that can possibly eat you after the split
-                        break;
-                    }
-                    // Splitkill
-                    this.gameServer.splitCells(this);
-                }
-            }
-            break;
-        case 4: // Shoot virus
-            if ((!this.target) || (!this.targetVirus) ||(!this.cells.length == 1) || (this.visibleNodes.indexOf(this.target) == -1) || (this.visibleNodes.indexOf(this.targetVirus) == -1)) {
-                this.gameState = 0; // Reset
-                this.target = null;
-                break;
-            }
-
-            // Make sure target is within range
-            var dist = this.getDist(this.targetVirus,this.target) - (this.target.getSize() + 100);
-            if (dist > 500) {
-                this.gameState = 0; // Reset
-                this.target = null;
-                break;
-            }
-
-            // Find angle of vector between target and virus
-            var angle = this.getAngle(this.target,this.targetVirus);
-
-            // Now reverse the angle
-            var reversed = this.reverseAngle(angle);
-
-            // Get this bot cell's angle
-            var ourAngle = this.getAngle(cell,this.targetVirus);
-
-            // Check if bot cell is in position
-            if ((ourAngle <= (reversed + .25) ) && (ourAngle >= (reversed - .25) )) {
-                // In position!
-                this.mouse = {x: this.targetVirus.position.x, y: this.targetVirus.position.y};
-
-                // Shoot
-                for (var v = 0; v < 7 ;v++) {
-                    this.gameServer.ejectMass(this);
-                }
-
-                // Back to starting pos
-                this.mouse = {x: cell.position.x, y: cell.position.y};
-
-                // Cleanup
-                this.gameState = 0; // Reset
-                this.target = null;
-            } else {
-                // Move to position
-                var r = cell.getSize();
-                var x1 = this.targetVirus.position.x + ((350 + r) * Math.sin(reversed));
-                var y1 = this.targetVirus.position.y + ((350 + r) * Math.cos(reversed));
-                this.mouse = {x: x1, y: y1};
-            }
-
-            // console.log("[Bot] "+cell.getName()+": Targeting (virus) "+this.target.getName());
-            break;
-        default:
-            //console.log("[Bot] "+cell.getName()+": Idle "+this.gameState);
-            this.gameState = 0;
-            break;
+    // Split decision
+    if (ouputs[2] > 0.5) {
+        this.gameServer.splitCells(this);
     }
 
-    // Recombining
-    if (this.cells.length > 1) {
-        var r = 0;
-        // Get amount of cells that can merge
-        for (var i in this.cells) {
-            if (this.cells[i].recombineTime == 0) {
-                r++;
-            }
-        }
-        // Merge 
-        if (r >= 2) {
-            this.mouse.x = this.centerPos.x;
-            this.mouse.y = this.centerPos.y;
-        }
-    } 
+    if (outputs[3] > 0.5) {
+        this.gameServer.ejectMass(this);
+    }
 };
 
 // Finds the nearest cell in list
