@@ -26,21 +26,17 @@ function BotNN() {
     this.ejectMass = 0; // Amount of times to eject mass
     this.oldPos = {x: 0, y:0};
 
-    this.genome = [] // Genotype
-    this.weights1 = [] // Phenotype 1
-    this.weights2 = [] // Phenotype 2
+    this.genome = []; // Genotype
+    this.weights1 = []; // Phenotype 1
+    this.weights2 = []; // Phenotype 2
 
-
-    this.nbInputs = 18
-    this.nbHiddens = 9
-    this.nbOuputs = 4
-
-    this.mutation_rate = 0.001;
-    this.sigma_gaussian = 0.01;
+    this.mutation_rate = 0.005;
+    this.sigma_gaussian = 0.05;
 
     this.initGenomeRandom();
     this.genomeToWeights();
 
+    this.oldMass = 0;
 }
 
 module.exports = BotNN;
@@ -53,13 +49,10 @@ BotNN.prototype.initGenomeRandom= function(){
 }
 
 BotNN.prototype.genomeToWeights=function(){
-    this.weights1=math.matrix(this.genome.subset(math.index(math.range(0,171),0)));
+    this.weights1=math.matrix(this.genome.subset(math.index(math.range(0,171), 0)));
     this.weights1.resize([9,19]);
-    this.weights2=math.matrix(this.genome.subset(math.index(math.range(171,211),0)));
+    this.weights2=math.matrix(this.genome.subset(math.index(math.range(171,211), 0)));
     this.weights2.resize([4,10]);
-
-
-
 }
 
 BotNN.prototype.getLowestCell = function() {
@@ -92,9 +85,33 @@ BotNN.prototype.updateSightRange = function() { // For view distance
 };
 
 BotNN.prototype.mutate = function() {
-    for (var i = 0; i < this.genome.length; i++) {
-        if(Math.random() < this.mutation_rate) {
+    var nextGaussRand = null;
+    for (var i = 0; i < this.genome.size()[0]; i++) {
+        var test = Math.random();
 
+        if(test < this.mutation_rate) {
+
+            if(!nextGaussRand) {
+                // Gaussian mutation with Box-Muller algorithm
+                var rand1 = Math.random();
+                var rand2 = Math.random();
+
+                gaussRand = math.sqrt(-2 * math.log(rand1)) * math.cos(2 * math.pi * rand2);
+                nextGaussRand = math.sqrt(-2 * math.log(rand2)) * math.cos(2 * math.pi * rand1);
+
+                this.genome = math.subset(this.genome, math.index(i, 0), this.genome.get([i, 0]) + gaussRand * this.sigma_gaussian);
+            }
+            else {
+                this.genome = math.subset(this.genome, math.index(i, 0), this.genome.get([i, 0]) + nextGaussRand * this.sigma_gaussian);
+                nextGaussRand = null;
+            }
+
+            if(this.genome.get([i, 0]) < 0) {
+                this.genome = math.subset(this.genome, math.index(i, 0), 0);
+            }
+            else if(this.genome.get([i, 0]) > 1) {
+                this.genome = math.subset(this.genome, math.index(i, 0), 1);
+            }
         }
     }
 }
@@ -124,17 +141,15 @@ BotNN.prototype.update = function() { // Overrides the update function from play
     // TODO: Change this so that the bot respown with its predator's genome
     // Respawn if bot is dead
     if (this.cells.length <= 0) {
-	this.initGenomeRandom();
-	this.genomeToWeights();
         this.gameServer.gameMode.onPlayerSpawn(this.gameServer,this);
 
         // We take the genotype of our killer
         if(lastKiller) {
             this.genome = lastKiller.genome;
+            this.mutate();
         }
         else {
-            // TODO: random genome
-            this.genome = []
+            this.initGenomeRandom();
         }
 
         if (this.cells.length == 0) {
@@ -215,7 +230,7 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 //    var weightsMatrix = math.matrix(this.weights.slice(0, (this.nbInputs + 1)*this.nbHiddens));
 
 //    var hiddenMatrix = math.multiply(inputsMatrix, weightsMatrix);
-    var hiddenMatrix=math.multiply(this.weights1,inputsMatrix);
+    var hiddenMatrix=math.multiply(this.weights1, inputsMatrix);
 
     // Apply sigmoid activation function
     var lambda = 5.0;
@@ -263,52 +278,67 @@ BotNN.prototype.getInputs = function(cell) {
     var inputsNN = nearestCellInfo;
 
     // Mass
-    inputsNN.push(this.getTotalMass());
+    inputsNN.push(this.getTotalMass()/this.gameServer.config.playerMaxMass);
 
     // Lowest cell mass
-    inputsNN.push(cell.mass);
+    inputsNN.push(cell.mass/this.gameServer.config.playerMaxMass);
 
     // Number of cells
-    inputsNN.push(this.cells.length);
-    inputsNN.push(1); //bias
+    inputsNN.push(this.cells.length/this.gameServer.config.playerMaxCells);
+
+    // Bias
+    inputsNN.push(1);
     return inputsNN;
 }
 
 // Returns [cosinus, sinus, distance] to the nearest cell in the given list
 BotNN.prototype.getInfoNearest = function(cell, list) {
     var cellInfo = [];   
-    if( list.length!=0)
+    if (list.length > 0)
     {
-	nearestCell = this.findNearest(cell, list);
-    
-   
+    	nearestCell = this.findNearest(cell, list);
 
-	// Find angle of vector between current cell and nearest cell
-	var deltaY = nearestCell.y - cell.position.y;
-	var deltaX = nearestCell.x - cell.position.x;
-	var angle = Math.atan2(deltaX, deltaY);
-	
-	// Now reverse the angle
-	if (angle > Math.PI) {
-            angle -= Math.PI;
-	} else {
-        angle += Math.PI;
-	}
-	
-	cellInfo.push(Math.cos(angle));
-	cellInfo.push(Math.sin(angle));
-	
-	var distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-	cellInfo.push(distance);
-	
-	
+        if(nearestCell) {
+        	// Find angle of vector between current cell and nearest cell
+        	var deltaY = nearestCell.position.y - cell.position.y;
+        	var deltaX = nearestCell.position.x - cell.position.x;
+        	var angle = Math.atan2(deltaX, deltaY);
+        	
+        	// Now reverse the angle
+        	if (angle > Math.PI) {
+                angle -= Math.PI;
+        	} else {
+                angle += Math.PI;
+        	}
+        	
+            // cosinus and sinus between 0 and 1
+            var cosNorm = Math.cos(angle)/2 + 0.5;
+            var sinNorm = Math.cos(angle)/2 + 0.5;
+
+        	cellInfo.push(cosNorm);
+        	cellInfo.push(sinNorm);
+        	
+        	var distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+
+            // Biggest distance possible in our view: viewBox diagonal
+            var distMax = Math.sqrt(Math.pow(this.viewBox.rightX - this.viewBox.leftX, 2) + Math.pow(this.viewBox.topY - this.viewBox.bottomY, 2))
+
+            // distance between 0 and 1
+            var distanceNorm = distance/distMax
+        	cellInfo.push(distanceNorm);
+        }
+        else {
+            cellInfo.push(0);
+            cellInfo.push(0.5);
+            cellInfo.push(1);
+        }
     }
-    else
-    {
-	cellInfo.push(-1);
-	cellInfo.push(0);
-	cellInfo.push(1);
+    else {
+    	cellInfo.push(0);
+    	cellInfo.push(0.5);
+    	cellInfo.push(1);
     }
+
     return cellInfo;
 }
 
@@ -364,8 +394,8 @@ BotNN.prototype.getState = function(cell) {
 };
 
 BotNN.prototype.decide = function(cell, outputs) {
-    console.log('outputs');
-    console.log(outputs);
+    // console.log('outputs');
+    // console.log(outputs);
    
 // Computation of of mouse.x and mouse.y
     // The idea is that outputs[0] (resp. outputs[1]) represents x (resp. y) as a ratio of
