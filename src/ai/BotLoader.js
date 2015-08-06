@@ -1,5 +1,5 @@
 // Project imports
-var BotPlayer = require('./BotPlayer');
+var BotPlayer = require('./BotNN');
 var FakeSocket = require('./FakeSocket');
 var PacketHandler = require('../PacketHandler');
 

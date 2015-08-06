@@ -27,24 +27,43 @@ function BotNN() {
     this.oldPos = {x: 0, y:0};
 
     this.genome = [] // Genotype
-    this.weights = [] // Phenotype
+    this.weights1 = [] // Phenotype 1
+    this.weights2 = [] // Phenotype 2
+
 
     this.nbInputs = 18
     this.nbHiddens = 9
     this.nbOuputs = 4
+    this.initGenomeRandom();
+    this.genomeToWeights();
+
 }
 
 module.exports = BotNN;
 BotNN.prototype = new PlayerTracker();
 
 // Functions
+BotNN.prototype.initGenomeRandom= function(){
+    this.genome=math.matrix(math.random([211,1]));
+
+}
+
+BotNN.prototype.genomeToWeights=function(){
+    this.weights1=math.matrix(this.genome.subset(math.index(math.range(0,171),0)));
+    this.weights1.resize([9,19]);
+    this.weights2=math.matrix(this.genome.subset(math.index(math.range(171,211),0)));
+    this.weights2.resize([4,10]);
+
+
+
+}
 
 BotNN.prototype.getLowestCell = function() {
     // Gets the cell with the lowest mass
     if (this.cells.length <= 0) {
         return null; // Error!
     }
-
+    
     // Starting cell
     var lowest = this.cells[0];
     for (i = 1; i < this.cells.length; i++) {
@@ -69,6 +88,8 @@ BotNN.prototype.updateSightRange = function() { // For view distance
 };
 
 BotNN.prototype.update = function() { // Overrides the update function from player tracker
+
+
     // Remove nodes from visible nodes if possible
     for (var i = 0; i < this.nodeDestroyQueue.length; i++) {
         var index = this.visibleNodes.indexOf(this.nodeDestroyQueue[i]);
@@ -89,6 +110,8 @@ BotNN.prototype.update = function() { // Overrides the update function from play
     // TODO: Change this so that the bot respown with its predator's genome
     // Respawn if bot is dead
     if (this.cells.length <= 0) {
+	this.initGenomeRandom();
+	this.genomeToWeights();
         this.gameServer.gameMode.onPlayerSpawn(this.gameServer,this);
         if (this.cells.length == 0) {
             // If the bot cannot spawn any cells, then disconnect it
@@ -162,11 +185,13 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 
     // Inputs neurons
     var inputsMatrix = math.matrix(this.getInputs(cell));
-
+    console.log('input');
+    console.log(inputsMatrix);
     // Input-Hidden weights
-    var weightsMatrix = math.matrix(this.weights.slice(0, (this.nbInputs + 1)*this.nbHiddens));
+//    var weightsMatrix = math.matrix(this.weights.slice(0, (this.nbInputs + 1)*this.nbHiddens));
 
-    var hiddenMatrix = math.multiply(inputsMatrix, weightsMatrix);
+//    var hiddenMatrix = math.multiply(inputsMatrix, weightsMatrix);
+    var hiddenMatrix=math.multiply(this.weights1,inputsMatrix);
 
     // Apply sigmoid activation function
     var lambda = 5.0;
@@ -174,9 +199,14 @@ BotNN.prototype.update = function() { // Overrides the update function from play
         return (1.0 / (math.exp(-value * lambda) + 1));
     });
 
-    weightsMatrix = math.matrix(this.weights.slice((this.nbInputs + 1)*this.nbHiddens, this.weights.length);
+//    weightsMatrix = math.matrix(this.weights.slice((this.nbInputs + 1)*this.nbHiddens, this.weights.length));
 
-    var outputs = math.multiply(hiddenMatrix, weightsMatrix);
+//    var outputs = math.multiply(hiddenMatrix, weightsMatrix);
+    hiddenMatrix.resize([10],1);
+    console.log('hidden');
+    console.log(hiddenMatrix);
+
+    outputs=math.multiply(this.weights2,hiddenMatrix);
 
     // Apply sigmoid activation function
     outputs = outputs.map(function (value, index, matrix) {
@@ -216,33 +246,45 @@ BotNN.prototype.getInputs = function(cell) {
 
     // Number of cells
     inputsNN.push(this.cells.length);
-
+    inputsNN.push(1); //bias
     return inputsNN;
 }
 
 // Returns [cosinus, sinus, distance] to the nearest cell in the given list
 BotNN.prototype.getInfoNearest = function(cell, list) {
-    nearestCell = this.findNearest(cell, list);
-    var cellInfo = [];
+    var cellInfo = [];   
+    if( list.length!=0)
+    {
+	nearestCell = this.findNearest(cell, list);
+    
+   
 
-    // Find angle of vector between current cell and nearest cell
-    var deltaY = nearestCell.y - cell.position.y;
-    var deltaX = nearestCell.x - cell.position.x;
-    var angle = Math.atan2(deltaX, deltaY);
-
-    // Now reverse the angle
-    if (angle > Math.PI) {
-        angle -= Math.PI;
-    } else {
+	// Find angle of vector between current cell and nearest cell
+	var deltaY = nearestCell.y - cell.position.y;
+	var deltaX = nearestCell.x - cell.position.x;
+	var angle = Math.atan2(deltaX, deltaY);
+	
+	// Now reverse the angle
+	if (angle > Math.PI) {
+            angle -= Math.PI;
+	} else {
         angle += Math.PI;
+	}
+	
+	cellInfo.push(Math.cos(angle));
+	cellInfo.push(Math.sin(angle));
+	
+	var distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+	cellInfo.push(distance);
+	
+	
     }
-
-    cellInfo.push(Math.cos(angle));
-    cellInfo.push(Math.sin(angle));
-
-    var distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-    cellInfo.push(distance);
-
+    else
+    {
+	cellInfo.push(-1);
+	cellInfo.push(0);
+	cellInfo.push(1);
+    }
     return cellInfo;
 }
 
@@ -298,18 +340,21 @@ BotNN.prototype.getState = function(cell) {
 };
 
 BotNN.prototype.decide = function(cell, outputs) {
-    // Computation of of mouse.x and mouse.y
+    console.log('outputs');
+    console.log(outputs);
+   
+// Computation of of mouse.x and mouse.y
     // The idea is that outputs[0] (resp. outputs[1]) represents x (resp. y) as a ratio of
     // the width (resp. height) in the viewBox.
-    this.mouse.x = this.viewBox.leftX + outputs[0] * this.viewBox.width;
-    this.mouse.y = this.viewBox.bottomY + outputs[1] * this.viewBox.height;
-
+    this.mouse.x = this.viewBox.leftX + outputs.subset(math.index(0)) * this.viewBox.width;
+    this.mouse.y = this.viewBox.bottomY + outputs.subset(math.index(1)) * this.viewBox.height;
+    
     // Split decision
-    if (ouputs[2] > 0.5) {
+    if (outputs.subset(math.index(2)) > 0.5) {
         this.gameServer.splitCells(this);
     }
 
-    if (outputs[3] > 0.5) {
+    if (outputs.subset(math.index(3)) > 0.5) {
         this.gameServer.ejectMass(this);
     }
 };
