@@ -32,6 +32,9 @@ function BotNN() {
     this.nbInputs = 18
     this.nbHiddens = 9
     this.nbOuputs = 4
+
+    this.mutation_rate = 0.001;
+    this.sigma_gaussian = 0.01;
 }
 
 module.exports = BotNN;
@@ -68,12 +71,22 @@ BotNN.prototype.updateSightRange = function() { // For view distance
     this.sightRangeY = range;
 };
 
+BotNN.prototype.mutate = function() {
+    for (var i = 0; i < this.genome.length; i++) {
+        if(Math.random() < this.mutation_rate) {
+
+        }
+    }
+}
+
 BotNN.prototype.update = function() { // Overrides the update function from player tracker
     // Remove nodes from visible nodes if possible
+    var lastKiller = null;
     for (var i = 0; i < this.nodeDestroyQueue.length; i++) {
         var index = this.visibleNodes.indexOf(this.nodeDestroyQueue[i]);
         if (index > -1) {
             this.visibleNodes.splice(index, 1);
+            lastKiller = this.nodeDestroyQueue[i].killedBy.owner;
         }
     }
 
@@ -90,6 +103,16 @@ BotNN.prototype.update = function() { // Overrides the update function from play
     // Respawn if bot is dead
     if (this.cells.length <= 0) {
         this.gameServer.gameMode.onPlayerSpawn(this.gameServer,this);
+
+        // We take the genotype of our killer
+        if(lastKiller) {
+            this.genome = lastKiller.genome;
+        }
+        else {
+            // TODO: random genome
+            this.genome = []
+        }
+
         if (this.cells.length == 0) {
             // If the bot cannot spawn any cells, then disconnect it
             this.socket.close();
