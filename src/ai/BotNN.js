@@ -30,7 +30,7 @@ function BotNN() {
     this.weights1 = []; // Phenotype 1
     this.weights2 = []; // Phenotype 2
 
-    this.inputsSize=18;
+    this.inputsSize=19;
     this.hiddenSize=9;
     this.outputsSize=4;
 
@@ -44,6 +44,8 @@ function BotNN() {
 
     this.oldMass = 0;
     this.life=200;
+
+    this.lastKiller = null;
 }
 
 module.exports = BotNN;
@@ -139,13 +141,14 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 
 
     // Remove nodes from visible nodes if possible
-    var lastKiller = null;
     for (var i = 0; i < this.nodeDestroyQueue.length; i++) {
         var index = this.visibleNodes.indexOf(this.nodeDestroyQueue[i]);
         if (index > -1) {
             this.visibleNodes.splice(index, 1);
-	    if(this.nodeDestroyQueue[i].owner==this){
-		lastKiller = this.nodeDestroyQueue[i].killedBy.owner;
+	    if(this.nodeDestroyQueue[i].owner == this){
+            if(this.nodeDestroyQueue[i].killedBy.owner) {
+                this.lastKiller = this.nodeDestroyQueue[i].killedBy.owner;
+            }
 	    }
         }
     }
@@ -175,24 +178,24 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 	return;
     }    
 
-    // TODO: Change this so that the bot respown with its predator's genome
     // Respawn if bot is dead
     if (this.cells.length <= 0) {
-
         this.gameServer.gameMode.onPlayerSpawn(this.gameServer,this);
 
         // We take the genotype of our killer
-        if(lastKiller) {
-	    console.log('GENOME TRANSFEREDDDDDD');
-            this.genome = lastKiller.genome;
+        if(this.lastKiller) {
+	    // console.log('GENOME TRANSFEREDDDDDD');
+            this.genome = this.lastKiller.genome;
             this.mutate();
 	    this.genomeToWeights();
         }
         else {
-	    console.log('GENOME random');
+	    // console.log('GENOME random');
             this.initGenomeRandom();
 	    this.genomeToWeights();
         }
+
+        this.lastKiller = null;
 
         if (this.cells.length == 0) {
             // If the bot cannot spawn any cells, then disconnect it
@@ -266,8 +269,8 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 
     // Inputs neurons
     var inputsMatrix = math.matrix(this.getInputs(cell));
-    //    console.log('input');
-    //  console.log(inputsMatrix);
+    // console.log('input');
+    // console.log(inputsMatrix);
     // Input-Hidden weights
     //    var weightsMatrix = math.matrix(this.weights.slice(0, (this.nbInputs + 1)*this.nbHiddens));
 
@@ -333,10 +336,53 @@ BotNN.prototype.getInputs = function(cell) {
     // Number of cells
     inputsNN.push(this.cells.length/this.gameServer.config.playerMaxCells);
 
+    // Proximity to the nearest wall
+    inputsNN.push(this.getNearestWall(cell));
+
     // Bias
     inputsNN.push(1);
     return inputsNN;
 }
+
+// Returns the distance to the nearest wall
+BotNN.prototype.getNearestWall = function(cell) {
+    var wallDistances = [];
+
+    // We verify that each wall is in the viewBox
+    // Bottom wall
+    if (this.gameServer.config.borderBottom <= this.viewBox.bottomY)
+        wallDistances.push(Math.abs(this.gameServer.config.borderBottom - cell.position.y));
+
+    // Top wall
+    if (this.gameServer.config.borderTop >= this.viewBox.topY)
+        wallDistances.push(Math.abs(this.gameServer.config.borderTop - cell.position.y));
+    
+    // Left wall
+    if (this.gameServer.config.borderLeft >= this.viewBox.leftX)
+        wallDistances.push(Math.abs(this.gameServer.config.borderLeft - cell.position.x));
+    
+    // Right wall
+    if (this.gameServer.config.borderRight <= this.viewBox.rightX)
+        wallDistances.push(Math.abs(this.gameServer.config.borderRight - cell.position.x));
+    
+    if (wallDistances.length > 0) {
+        nearestWall = wallDistances[0]
+        for (var i = 1; i < wallDistances.length; i++) {
+            if (wallDistances[i] < nearestWall) {
+                nearestWall = wallDistances[i]
+            }
+        }
+
+        // Normalization according to viewBox
+        // Biggest distance possible in our view: viewBox diagonal
+        var distMax = Math.sqrt(Math.pow(this.viewBox.rightX - this.viewBox.leftX, 2) + Math.pow(this.viewBox.topY - this.viewBox.bottomY, 2));
+        return(nearestWall/distMax);
+    }
+
+    return 1;
+}
+
+
 
 // Returns [cosinus, sinus, distance] to the nearest cell in the given list
 BotNN.prototype.getInfoNearest = function(cell, list) {
