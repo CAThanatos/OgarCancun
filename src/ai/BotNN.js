@@ -30,6 +30,12 @@ function BotNN() {
     this.weights1 = []; // Phenotype 1
     this.weights2 = []; // Phenotype 2
 
+    this.inputsSize=18;
+    this.hiddenSize=9;
+    this.outputsSize=4;
+
+    this.ampWeights=1;//weights from -5 to -5
+
     this.mutation_rate = 0.005;
     this.sigma_gaussian = 0.05;
 
@@ -37,6 +43,7 @@ function BotNN() {
     this.genomeToWeights();
 
     this.oldMass = 0;
+    this.life=200;
 }
 
 module.exports = BotNN;
@@ -44,15 +51,26 @@ BotNN.prototype = new PlayerTracker();
 
 // Functions
 BotNN.prototype.initGenomeRandom= function(){
-    this.genome=math.matrix(math.random([211,1]));
+    this.genome=math.matrix(math.random([(this.inputsSize+1)*this.hiddenSize+(this.hiddenSize+1)*this.outputsSize,1]));
 
 }
 
 BotNN.prototype.genomeToWeights=function(){
-    this.weights1=math.matrix(this.genome.subset(math.index(math.range(0,171), 0)));
-    this.weights1.resize([9,19]);
-    this.weights2=math.matrix(this.genome.subset(math.index(math.range(171,211), 0)));
-    this.weights2.resize([4,10]);
+    this.weights1=math.matrix(math.zeros([this.hiddenSize,this.inputsSize+1]));
+    for (i = 0; i < this.hiddenSize; i++){
+	this.weights1.subset( math.index(i,math.range(0,this.inputsSize+1)) , math.transpose(this.genome.subset(math.index(math.range(i*(this.inputsSize+1),(i+1)*(this.inputsSize+1)),0))));
+    }
+
+    this.weights1=math.multiply(math.add(this.weights1,-0.5),2*this.ampWeights);
+
+    this.weights2=math.matrix(math.zeros([this.outputsSize,this.hiddenSize+1]));
+    for (i = 0; i < this.outputsSize; i++){
+	this.weights2.subset( math.index(i,math.range(0,this.hiddenSize+1)) , math.transpose(this.genome.subset(math.index(math.range((this.inputsSize+1)*this.hiddenSize+i*(this.hiddenSize+1),(this.inputsSize+1)*this.hiddenSize+(i+1)*(this.hiddenSize+1)),0))));
+    }
+    this.weights2=math.multiply(math.add(this.weights2,-0.5),2*this.ampWeights);
+
+    
+
 }
 
 BotNN.prototype.getLowestCell = function() {
@@ -86,7 +104,7 @@ BotNN.prototype.updateSightRange = function() { // For view distance
 
 BotNN.prototype.mutate = function() {
     var nextGaussRand = null;
-    for (var i = 0; i < this.genome.size()[0]; i++) {
+    for (var i = 0; i < math.matrix(this.genome).size()[0]; i++) {
         var test = Math.random();
 
         if(test < this.mutation_rate) {
@@ -119,13 +137,16 @@ BotNN.prototype.mutate = function() {
 BotNN.prototype.update = function() { // Overrides the update function from player tracker
 
 
+
     // Remove nodes from visible nodes if possible
     var lastKiller = null;
     for (var i = 0; i < this.nodeDestroyQueue.length; i++) {
         var index = this.visibleNodes.indexOf(this.nodeDestroyQueue[i]);
         if (index > -1) {
             this.visibleNodes.splice(index, 1);
-            lastKiller = this.nodeDestroyQueue[i].killedBy.owner;
+	    if(this.nodeDestroyQueue[i].owner==this){
+		lastKiller = this.nodeDestroyQueue[i].killedBy.owner;
+	    }
         }
     }
 
@@ -138,18 +159,39 @@ BotNN.prototype.update = function() { // Overrides the update function from play
         return;
     }
 
+    if(this.getTotalMass()-this.oldMass>0)
+	this.life+=(this.getTotalMass()-this.oldMass);
+    this.oldMass=this.getTotalMass();
+    this.life--;
+//    console.log(this.life);
+    if(this.life<0)
+    {
+	console.log('Dead');
+	this.initGenomeRandom();
+	this.genomeToWeights();
+	this.life=100;
+	this.oldMass=0;
+	this.mass=20;
+	return;
+    }    
+
     // TODO: Change this so that the bot respown with its predator's genome
     // Respawn if bot is dead
     if (this.cells.length <= 0) {
+
         this.gameServer.gameMode.onPlayerSpawn(this.gameServer,this);
 
         // We take the genotype of our killer
         if(lastKiller) {
+	    console.log('GENOME TRANSFEREDDDDDD');
             this.genome = lastKiller.genome;
             this.mutate();
+	    this.genomeToWeights();
         }
         else {
+	    console.log('GENOME random');
             this.initGenomeRandom();
+	    this.genomeToWeights();
         }
 
         if (this.cells.length == 0) {
@@ -178,45 +220,45 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 
         var t = check.getType();
         switch (t) {
-            case 0:
-                // Cannot target teammates
-                if (this.gameServer.gameMode.haveTeams) {
-                    if (check.owner.team == this.team) {
-                        continue;
-                    }
+        case 0:
+            // Cannot target teammates
+            if (this.gameServer.gameMode.haveTeams) {
+                if (check.owner.team == this.team) {
+                    continue;
                 }
+            }
 
-                // Check for danger
-                if (cell.mass > (check.mass * 1.25)) {
-                    // Add to prey list
-                    this.prey.push(check);
-                } else if (check.mass > (cell.mass * 1.25)) {
-                    // Predator
-                    var dist = this.getDist(cell, check) - (r + check.getSize());
-                    if (dist < 300) {
-                        this.predators.push(check);
-                        if ((this.cells.length == 1) && (dist < 0)) {
-                            this.juke = true;
-                        }
+            // Check for danger
+            if (cell.mass > (check.mass * 1.25)) {
+                // Add to prey list
+                this.prey.push(check);
+            } else if (check.mass > (cell.mass * 1.25)) {
+                // Predator
+                var dist = this.getDist(cell, check) - (r + check.getSize());
+                if (dist < 300) {
+                    this.predators.push(check);
+                    if ((this.cells.length == 1) && (dist < 0)) {
+                        this.juke = true;
                     }
-                    this.threats.push(check);
-                } else {
-                    this.threats.push(check);
                 }
-                break;
-            case 1:
+                this.threats.push(check);
+            } else {
+                this.threats.push(check);
+            }
+            break;
+        case 1:
+            this.food.push(check);
+            break;
+        case 2: // Virus
+            this.virus.push(check);
+            break;
+        case 3: // Ejected mass
+            if (cell.mass > 20) {
                 this.food.push(check);
-                break;
-            case 2: // Virus
-                this.virus.push(check);
-                break;
-            case 3: // Ejected mass
-                if (cell.mass > 20) {
-                    this.food.push(check);
-                }
-                break;
-            default:
-                break;
+            }
+            break;
+        default:
+            break;
         }
     }
 
@@ -224,13 +266,18 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 
     // Inputs neurons
     var inputsMatrix = math.matrix(this.getInputs(cell));
-    console.log('input');
-    console.log(inputsMatrix);
+    //    console.log('input');
+    //  console.log(inputsMatrix);
     // Input-Hidden weights
-//    var weightsMatrix = math.matrix(this.weights.slice(0, (this.nbInputs + 1)*this.nbHiddens));
+    //    var weightsMatrix = math.matrix(this.weights.slice(0, (this.nbInputs + 1)*this.nbHiddens));
 
-//    var hiddenMatrix = math.multiply(inputsMatrix, weightsMatrix);
+    //    var hiddenMatrix = math.multiply(inputsMatrix, weightsMatrix);
     var hiddenMatrix=math.multiply(this.weights1, inputsMatrix);
+    //    console.log('hidden before activ');
+    // console.log(hiddenMatrix);
+    
+    // console.log('weightsMatrix');
+    //console.log(this.weights1);
 
     // Apply sigmoid activation function
     var lambda = 5.0;
@@ -238,12 +285,12 @@ BotNN.prototype.update = function() { // Overrides the update function from play
         return (1.0 / (math.exp(-value * lambda) + 1));
     });
 
-//    weightsMatrix = math.matrix(this.weights.slice((this.nbInputs + 1)*this.nbHiddens, this.weights.length));
+    //    weightsMatrix = math.matrix(this.weights.slice((this.nbInputs + 1)*this.nbHiddens, this.weights.length));
 
-//    var outputs = math.multiply(hiddenMatrix, weightsMatrix);
+    //    var outputs = math.multiply(hiddenMatrix, weightsMatrix);
     hiddenMatrix.resize([10],1);
-    console.log('hidden');
-    console.log(hiddenMatrix);
+//    console.log('hidden');
+//    console.log(hiddenMatrix);
 
     outputs=math.multiply(this.weights2,hiddenMatrix);
 
@@ -299,33 +346,33 @@ BotNN.prototype.getInfoNearest = function(cell, list) {
     	nearestCell = this.findNearest(cell, list);
 
         if(nearestCell) {
-        	// Find angle of vector between current cell and nearest cell
-        	var deltaY = nearestCell.position.y - cell.position.y;
-        	var deltaX = nearestCell.position.x - cell.position.x;
-        	var angle = Math.atan2(deltaX, deltaY);
-        	
-        	// Now reverse the angle
-        	if (angle > Math.PI) {
+            // Find angle of vector between current cell and nearest cell
+            var deltaY = nearestCell.position.y - cell.position.y;
+            var deltaX = nearestCell.position.x - cell.position.x;
+            var angle = Math.atan2(deltaX, deltaY);
+            
+            // Now reverse the angle
+            if (angle > Math.PI) {
                 angle -= Math.PI;
-        	} else {
+            } else if (angle < - Math.PI) {
                 angle += Math.PI;
-        	}
-        	
+            }
+            
             // cosinus and sinus between 0 and 1
             var cosNorm = Math.cos(angle)/2 + 0.5;
-            var sinNorm = Math.cos(angle)/2 + 0.5;
+            var sinNorm = Math.sin(angle)/2 + 0.5;
 
-        	cellInfo.push(cosNorm);
-        	cellInfo.push(sinNorm);
-        	
-        	var distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+            cellInfo.push(cosNorm);
+            cellInfo.push(sinNorm);
+            
+            var distance = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
 
             // Biggest distance possible in our view: viewBox diagonal
             var distMax = Math.sqrt(Math.pow(this.viewBox.rightX - this.viewBox.leftX, 2) + Math.pow(this.viewBox.topY - this.viewBox.bottomY, 2))
 
             // distance between 0 and 1
             var distanceNorm = distance/distMax
-        	cellInfo.push(distanceNorm);
+            cellInfo.push(distanceNorm);
         }
         else {
             cellInfo.push(0);
@@ -394,14 +441,18 @@ BotNN.prototype.getState = function(cell) {
 };
 
 BotNN.prototype.decide = function(cell, outputs) {
-    // console.log('outputs');
-    // console.log(outputs);
-   
-// Computation of of mouse.x and mouse.y
+//    console.log('outputs');
+//    console.log(outputs);
+    
+    // Computation of of mouse.x and mouse.y
     // The idea is that outputs[0] (resp. outputs[1]) represents x (resp. y) as a ratio of
     // the width (resp. height) in the viewBox.
-    this.mouse.x = this.viewBox.leftX + outputs.subset(math.index(0)) * this.viewBox.width;
-    this.mouse.y = this.viewBox.bottomY + outputs.subset(math.index(1)) * this.viewBox.height;
+    this.mouse.x = cell.position.x + (1000 * (outputs.subset(math.index(0))-0.5));
+    this.mouse.y = cell.position.y + (1000 * (outputs.subset(math.index(1))-0.5));
+
+
+    //this.mouse.x = this.viewBox.leftX + outputs.subset(math.index(0)) * this.viewBox.width;
+    //this.mouse.y = this.viewBox.bottomY + outputs.subset(math.index(1)) * this.viewBox.height;
     
     // Split decision
     if (outputs.subset(math.index(2)) > 0.5) {
