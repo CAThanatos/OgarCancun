@@ -76,6 +76,10 @@ BotPlayer.prototype.update = function() { // Overrides the update function from 
         return;
     }
 
+    if (this.getTotalMass()>1000){
+	this.mass=500;
+    }
+   
     // Respawn if bot is dead
     if (this.cells.length <= 0) {
         this.gameServer.gameMode.onPlayerSpawn(this.gameServer,this);
@@ -172,6 +176,14 @@ BotPlayer.prototype.clearLists = function() {
     this.virus = [];
     this.juke = false;
 };
+BotPlayer.prototype.getTotalMass = function() {
+    var mass = 0;
+    for (var i = 0; i < this.cells.length; i++) {
+        mass += this.cells[i].mass;
+    }
+
+    return mass
+}
 
 BotPlayer.prototype.getState = function(cell) {
     // Continue to shoot viruses

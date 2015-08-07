@@ -186,8 +186,14 @@ BotNN.prototype.update = function() { // Overrides the update function from play
         if(this.lastKiller) {
 	    // console.log('GENOME TRANSFEREDDDDDD');
             this.genome = this.lastKiller.genome;
-            this.mutate();
-	    this.genomeToWeights();
+	    if(this.genome!=undefined)
+	    {
+		this.mutate();
+	
+	    }else{ // if eaten by a bot without genome (vanillia bots)
+            this.initGenomeRandom();
+	    }
+	this.genomeToWeights();
         }
         else {
 	    // console.log('GENOME random');
