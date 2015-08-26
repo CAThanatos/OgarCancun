@@ -29,6 +29,7 @@ Commands.list = {
     help: function(gameServer,split) {
         console.log("[Console] ======================== HELP ======================");
         console.log("[Console] addbot     : add bot to the server");
+        console.log("[Console] addbotnn     : add bot to the server using neural network");
         console.log("[Console] board      : set scoreboard text");
         console.log("[Console] boardreset : reset scoreboard text");
         console.log("[Console] change     : change specified settings");
@@ -60,6 +61,17 @@ Commands.list = {
             gameServer.bots.addBot();
         }
         console.log("[Console] Added "+add+" player bots");
+    },
+    addbotnn: function(gameServer,split) {
+        var add = parseInt(split[1]);
+        if (isNaN(add)) {
+            add = 1; // Adds 1 bot if user doesnt specify a number
+        }
+
+        for (var i = 0; i < add; i++) {
+            gameServer.botsNN.addBot();
+        }
+        console.log("[Console] Added "+add+" player bots NN");
     },
     board: function(gameServer,split) {
         var newLB = [];

@@ -11,6 +11,7 @@ var PacketHandler = require('./PacketHandler');
 var Entity = require('./entity');
 var Gamemode = require('./gamemodes');
 var BotLoader = require('./ai/BotLoader');
+var BotNNLoader = require('./ai/BotNNLoader');
 var Logger = require('./modules/log');
 
 // GameServer implementation
@@ -31,6 +32,7 @@ function GameServer() {
     this.lb_packet = new ArrayBuffer(0); // Leaderboard packet
 
     this.bots = new BotLoader(this);
+    this.botsNN = new BotNNLoader(this);
     this.log = new Logger();
     this.commands; // Command handler
 
