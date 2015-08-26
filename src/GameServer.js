@@ -85,6 +85,7 @@ function GameServer() {
         tourneyTimeLimit: 20, // Time limit of the game, in minutes.
         tourneyAutoFill: 0, // If set to a value higher than 0, the tournament match will automatically fill up with bots after this amount of seconds
         tourneyAutoFillPlayers: 1, // The timer for filling the server with bots will not count down unless there is this amount of real players
+        torusWorld: 0, // Sets the world to be a torus
     };
     // Parse config
     this.loadConfig();
@@ -310,7 +311,7 @@ GameServer.prototype.addNode = function(node) {
 
         // client.nodeAdditionQueue is only used by human players, not bots
         // for bots it just gets collected forever, using ever-increasing amounts of memory
-        if ('_socket' in client.socket && node.visibleCheck(client.viewBox,client.centerPos)) {
+        if ('_socket' in client.socket && node.visibleCheck(client.viewBox,client.centerPos, this)) {
             client.nodeAdditionQueue.push(node);
         }
     }
@@ -810,7 +811,7 @@ GameServer.prototype.getNearestVirus = function(cell) {
             continue;
         }
 
-        if (!check.collisionCheck(bottomY,topY,rightX,leftX)) {
+        if (!check.collisionCheck(bottomY,topY,rightX,leftX,this)) {
             continue;
         }
 

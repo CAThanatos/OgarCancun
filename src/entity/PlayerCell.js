@@ -13,10 +13,10 @@ PlayerCell.prototype = new Cell();
 
 // Main Functions
 
-PlayerCell.prototype.visibleCheck = function(box,centerPos) {
+PlayerCell.prototype.visibleCheck = function(box,centerPos,gameServer) {
     // Use old fashioned checking method if cell is small
     if (this.mass < 150) {
-        return this.collisionCheck(box.bottomY,box.topY,box.rightX,box.leftX);
+        return this.collisionCheck(box.bottomY,box.topY,box.rightX,box.leftX,gameServer);
     }
 
     // Checks if this cell is visible to the player
@@ -24,7 +24,26 @@ PlayerCell.prototype.visibleCheck = function(box,centerPos) {
     var lenX = cellSize + box.width >> 0; // Width of cell + width of the box (Int)
     var lenY = cellSize + box.height >> 0; // Height of cell + height of the box (Int)
 
-    return (this.abs(this.position.x - centerPos.x) < lenX) && (this.abs(this.position.y - centerPos.y) < lenY);
+    if(this.owner.gameServer.config.torusWorld) {
+        var condX = this.abs(this.abs(this.owner.gameServer.config.borderRight - this.position.x) - centerPos.x) < lenX;
+        var condY = this.abs(this.abs(this.owner.gameServer.config.borderBottom - this.position.y) - centerPos.y) < lenY;
+
+        // console.log('Position : ' + this.position.x + "/" + this.position.y)
+        // console.log('Cell position : ' + centerPos.x + "/" + centerPos.y)
+        // var megaCond = ((this.abs(this.position.x - centerPos.x) < lenX) && (this.abs(this.position.y - centerPos.y) < lenY))
+        //     || (condX && (this.abs(this.position.y - centerPos.y) < lenY))
+        //     || ((this.abs(this.position.x - centerPos.x) < lenX) && condY)
+        //     || (condX && condY);
+
+        // console.log('Résutlat : ' + megaCond)
+        return ((this.abs(this.position.x - centerPos.x) < lenX) && (this.abs(this.position.y - centerPos.y) < lenY))
+            || (condX && (this.abs(this.position.y - centerPos.y) < lenY))
+            || ((this.abs(this.position.x - centerPos.x) < lenX) && condY)
+            || (condX && condY);
+    }
+    else {
+        return (this.abs(this.position.x - centerPos.x) < lenX) && (this.abs(this.position.y - centerPos.y) < lenY);
+    }
 };
 
 PlayerCell.prototype.simpleCollide = function(check,d) {
@@ -103,17 +122,35 @@ PlayerCell.prototype.calcMove = function(x2, y2, gameServer) {
     gameServer.gameMode.onCellMove(x1,y1,this);
 
     // Check to ensure we're not passing the world border
-    if (x1 < config.borderLeft) {
-        x1 = config.borderLeft;
+    if (config.torusWorld == 1) {
+        // console.log('TORUS MOVE');
+        if (x1 < config.borderLeft) {
+            x1 = (x1 + config.borderRight)%config.borderRight;
+        }
+        if (x1 > config.borderRight) {
+            x1 = x1%config.borderRight;
+        }
+        if (y1 < config.borderTop) {
+            y1 = (y1 + config.borderBottom)%config.borderBottom;
+        }
+        if (y1 > config.borderBottom) {
+            y1 = y1%config.borderBottom;
+        }
     }
-    if (x1 > config.borderRight) {
-        x1 = config.borderRight;
-    }
-    if (y1 < config.borderTop) {
-        y1 = config.borderTop;
-    }
-    if (y1 > config.borderBottom) {
-        y1 = config.borderBottom;
+    else {
+        // console.log('NOT TORUS MOVE');
+        if (x1 < config.borderLeft) {
+            x1 = config.borderLeft;
+        }
+        if (x1 > config.borderRight) {
+            x1 = config.borderRight;
+        }
+        if (y1 < config.borderTop) {
+            y1 = config.borderTop;
+        }
+        if (y1 > config.borderBottom) {
+            y1 = borderBottom;
+        }
     }
 
     this.position.x = x1 >> 0;

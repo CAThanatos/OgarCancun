@@ -169,7 +169,6 @@ BotNN.prototype.update = function() { // Overrides the update function from play
 //    console.log(this.life);
     if(this.life<0)
     {
-	console.log('Dead');
 	this.initGenomeRandom();
 	this.genomeToWeights();
 	this.life=100;

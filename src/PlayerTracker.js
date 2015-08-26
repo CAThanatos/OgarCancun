@@ -260,7 +260,7 @@ PlayerTracker.prototype.calcViewBox = function() {
             continue;
         }
 
-        if (node.visibleCheck(this.viewBox,this.centerPos)) {
+        if (node.visibleCheck(this.viewBox,this.centerPos,this.gameServer)) {
             // Cell is in range of viewBox
             newVisible.push(node);
         }
